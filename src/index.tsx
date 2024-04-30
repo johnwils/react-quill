@@ -147,7 +147,8 @@ class ReactQuill extends React.Component<ReactQuillProps, ReactQuillState> {
   /*
   Reference to the element holding the Quill editing area.
   */
-  editingArea?: React.ReactInstance | null
+  editingAreaDiv: React.RefObject<HTMLDivElement> = React.createRef();
+  editingAreaPre: React.RefObject<HTMLPreElement> = React.createRef();
 
   /*
   Tracks the internal value of the Quill editor
@@ -180,7 +181,7 @@ class ReactQuill extends React.Component<ReactQuillProps, ReactQuillState> {
 
   constructor(props: ReactQuillProps) {
     super(props);
-    const value = this.isControlled()? props.value : props.defaultValue;
+    const value = this.isControlled() ? props.value : props.defaultValue;
     this.value = value ?? '';
   }
 
@@ -250,9 +251,14 @@ class ReactQuill extends React.Component<ReactQuillProps, ReactQuillState> {
   }
 
   componentDidMount() {
-    this.instantiateEditor();
-    this.setEditorContents(this.editor!, this.getEditorContents());
+    if (this.editingAreaDiv.current || this.editingAreaPre.current) {
+      this.instantiateEditor();
+      this.setEditorContents(this.editor!, this.getEditorContents());
+    } else {
+      throw new Error('Editing area element is not available');
+    }
   }
+
 
   componentWillUnmount() {
     this.destroyEditor();
@@ -266,15 +272,15 @@ class ReactQuill extends React.Component<ReactQuillProps, ReactQuillState> {
     if (this.editor && this.shouldComponentRegenerate(prevProps)) {
       const delta = this.editor.getContents();
       const selection = this.editor.getSelection();
-      this.regenerationSnapshot = {delta, selection};
-      this.setState({generation: this.state.generation + 1});
+      this.regenerationSnapshot = { delta, selection };
+      this.setState({ generation: this.state.generation + 1 });
       this.destroyEditor();
     }
 
     // The component has been regenerated, so it must be re-instantiated, and
     // its content must be restored to the previous values from the snapshot.
     if (this.state.generation !== prevState.generation) {
-      const {delta, selection} = this.regenerationSnapshot!;
+      const { delta, selection } = this.regenerationSnapshot!;
       delete this.regenerationSnapshot;
       this.instantiateEditor();
       const editor = this.editor!;
@@ -396,8 +402,8 @@ class ReactQuill extends React.Component<ReactQuillProps, ReactQuillState> {
     if (range) {
       // Validate bounds before applying.
       const length = editor.getLength();
-      range.index = Math.max(0, Math.min(range.index, length-1));
-      range.length = Math.max(0, Math.min(range.length, (length-1) - range.index));
+      range.index = Math.max(0, Math.min(range.index, length - 1));
+      range.length = Math.max(0, Math.min(range.length, (length - 1) - range.index));
       editor.setSelection(range);
     }
   }
@@ -423,53 +429,48 @@ class ReactQuill extends React.Component<ReactQuillProps, ReactQuillState> {
   makeUnprivilegedEditor(editor: Quill) {
     const e = editor;
     return {
-      getHTML:      () => e.root.innerHTML,
-      getLength:    e.getLength.bind(e),
-      getText:      e.getText.bind(e),
-      getContents:  e.getContents.bind(e),
+      getHTML: () => e.root.innerHTML,
+      getLength: e.getLength.bind(e),
+      getText: e.getText.bind(e),
+      getContents: e.getContents.bind(e),
       getSelection: e.getSelection.bind(e),
-      getBounds:    e.getBounds.bind(e),
+      getBounds: e.getBounds.bind(e),
     };
   }
 
-  getEditingArea(): Element {
-    if (!this.editingArea) {
+  getEditingArea(): HTMLElement {
+    const element = this.editingAreaDiv.current || this.editingAreaPre.current;
+
+    if (!element) {
       throw new Error('Instantiating on missing editing area');
     }
-    const element = ReactDOM.findDOMNode(this.editingArea);
-    if (!element) {
-      throw new Error('Cannot find element for editing area');
-    }
+
     if (element.nodeType === 3) {
       throw new Error('Editing area cannot be a text node');
     }
-    return element as Element;
+    return element;
   }
 
   /*
   Renders an editor area, unless it has been provided one to clone.
   */
   renderEditingArea(): JSX.Element {
-    const {children, preserveWhitespace} = this.props;
-    const {generation} = this.state;
-
-    const properties = {
-      key: generation,
-      ref: (instance: React.ReactInstance | null) => {
-        this.editingArea = instance
-      },
-    };
+    const { children, preserveWhitespace } = this.props;
+    const { generation } = this.state;
 
     if (React.Children.count(children)) {
       return React.cloneElement(
         React.Children.only(children)!,
-        properties
+        {
+          key: generation,
+          ref: preserveWhitespace ? this.editingAreaPre : this.editingAreaDiv,
+        }
       );
     }
 
     return preserveWhitespace ?
-      <pre {...properties}/> :
-      <div {...properties}/>;
+      <pre key={generation} ref={this.editingAreaPre} /> :
+      <div key={generation} ref={this.editingAreaDiv} />;
   }
 
   render() {
